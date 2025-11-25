@@ -1,0 +1,221 @@
+import java.io.*;
+import java.util.*;
+import java.sql.SQLException;
+
+public class TicketOffice {
+    private static TicketOffice instance;
+    private DatabaseManager dbManager;
+
+    // Singleton паттерн
+    private TicketOffice() {
+        dbManager = DatabaseManager.getInstance();
+    }
+
+    public static TicketOffice getInstance() {
+        if (instance == null) {
+            instance = new TicketOffice();
+        }
+        return instance;
+    }
+
+    // === ТАРИФЫ ===
+    public void setTariff(Direction direction, double price) {
+        if (price <= 0) {
+            System.out.println("Ошибка! Стоимость тарифа должна быть положительной.");
+        } else if (price > 100000) {
+            System.out.println("Ошибка! Слишком большая стоимость (" + price + " руб.). Максимальная цена билета: 10 000 руб.");
+        } else {
+            try {
+                dbManager.setTariff(direction.name(), price);
+                System.out.println("Тариф на направление " + direction + " установлен: " + price + " руб.");
+            } catch (SQLException e) {
+                System.out.println("Ошибка установки тарифа: " + e.getMessage());
+            }
+        }
+    }
+
+    public double getTariff(Direction direction) {
+        try {
+            return dbManager.getTariff(direction.name());
+        } catch (SQLException e) {
+            System.out.println("Ошибка получения тарифа: " + e.getMessage());
+            return 0.0;
+        }
+    }
+
+    public void displayAllTariffs() {
+        System.out.println("\nТАРИФЫ НА НАПРАВЛЕНИЯ");
+        for (Direction direction : Direction.values()) {
+            double price = getTariff(direction);
+            System.out.println(direction + ": " + price + " руб.");
+        }
+    }
+
+    // === ПАССАЖИРЫ ===
+    public void addPassenger(Passenger passenger) {
+        try {
+            dbManager.addPassenger(passenger);
+            System.out.println("Пассажир добавлен: " + passenger.getFullName());
+        } catch (SQLException e) {
+            System.out.println("Ошибка добавления пассажира: " + e.getMessage());
+        }
+    }
+
+    public boolean removePassenger(String passportNumber) {
+        try {
+            boolean success = dbManager.removePassenger(passportNumber);
+            if (success) {
+                System.out.println("Пассажир " + passportNumber + " удален из системы");
+            }
+            return success;
+        } catch (SQLException e) {
+            System.out.println("Ошибка удаления пассажира: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public List<Passenger> getAllPassengers() {
+        try {
+            return dbManager.getAllPassengers();
+        } catch (SQLException e) {
+            System.out.println("Ошибка получения пассажиров: " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public Passenger findPassengerByPassport(String passportNumber) {
+        try {
+            return dbManager.findPassengerByPassport(passportNumber);
+        } catch (SQLException e) {
+            System.out.println("Ошибка поиска пассажира: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // === БИЛЕТЫ ===
+    public boolean sellTicket(Passenger passenger, Direction direction) {
+        double price = getTariff(direction);
+        if (price > 0) {
+            try {
+                // ★ ВАЖНОЕ ИСПРАВЛЕНИЕ: Проверяем и добавляем пассажира если его нет
+                Passenger existingPassenger = dbManager.findPassengerByPassport(passenger.getPassportNumber());
+                if (existingPassenger == null) {
+                    // Пассажира нет в БД - добавляем
+                    dbManager.addPassenger(passenger);
+                    System.out.println("Пассажир автоматически добавлен в БД: " + passenger.getFullName());
+                } else {
+                    // Используем существующего пассажира из БД
+                    passenger = existingPassenger;
+                }
+
+                Ticket ticket = new Ticket(passenger, direction, price);
+                dbManager.addTicket(ticket);
+                System.out.println("Билет продан: " + ticket);
+                return true;
+            } catch (SQLException e) {
+                System.out.println("Ошибка продажи билета: " + e.getMessage());
+                return false;
+            }
+        } else {
+            System.out.println("Ошибка! Тариф на направление " + direction + " не установлен.");
+            return false;
+        }
+    }
+
+    public List<Ticket> getAllTickets() {
+        try {
+            return dbManager.getAllTickets();
+        } catch (SQLException e) {
+            System.out.println("Ошибка получения билетов: " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public double calculateTotalCostForPassenger(Passenger passenger) {
+        try {
+            List<Ticket> tickets = dbManager.getAllTickets();
+            double total = 0.0;
+            for (Ticket ticket : tickets) {
+                if (ticket.getPassenger().getPassportNumber().equals(passenger.getPassportNumber())) {
+                    total += ticket.getPrice();
+                }
+            }
+            return total;
+        } catch (SQLException e) {
+            System.out.println("Ошибка расчета стоимости: " + e.getMessage());
+            return 0.0;
+        }
+    }
+
+    public void displayPassengersByDirection(Direction direction) {
+        try {
+            List<Passenger> passengers = dbManager.getPassengersByDirection(direction);
+            System.out.println("\n ПАССАЖИРЫ НАПРАВЛЕНИЯ: " + direction + " ");
+            if (passengers.isEmpty()) {
+                System.out.println("На это направление билеты не продавались.");
+            } else {
+                for (Passenger passenger : passengers) {
+                    System.out.println(passenger);
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("Ошибка отображения пассажиров: " + e.getMessage());
+        }
+    }
+
+    public void displayAllTickets() {
+        try {
+            List<Ticket> tickets = dbManager.getAllTickets();
+            System.out.println("\nВСЕ ПРОДАННЫЕ БИЛЕТЫ");
+            if (tickets.isEmpty()) {
+                System.out.println("Билетов нет.");
+            } else {
+                for (Ticket ticket : tickets) {
+                    System.out.println(ticket);
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("Ошибка отображения билетов: " + e.getMessage());
+        }
+    }
+
+    // === СИСТЕМНЫЕ МЕТОДЫ ===
+    public void cleanup() {
+        try {
+            dbManager.cleanup();
+            System.out.println("Система очищена.");
+        } catch (SQLException e) {
+            System.out.println("Ошибка очистки системы: " + e.getMessage());
+        }
+    }
+
+    // === ФАЙЛОВЫЕ ОПЕРАЦИИ (ОСТАВЛЯЕМ ДЛЯ СОВМЕСТИМОСТИ) ===
+    public void saveToFile(String filename) {
+        System.out.println("⚠️ Внимание: Данные теперь автоматически сохраняются в БД");
+        System.out.println("Файловое сохранение устарело");
+    }
+
+    public void loadFromFile(String filename) {
+        System.out.println("⚠️ Внимание: Данные теперь автоматически загружаются из БД");
+        System.out.println("Файловая загрузка устарела");
+    }
+
+    // === ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ДЛЯ ОТЧЕТОВ ===
+    public double getTotalRevenue() {
+        try {
+            return dbManager.getTotalRevenue();
+        } catch (SQLException e) {
+            System.out.println("Ошибка расчета выручки: " + e.getMessage());
+            return 0.0;
+        }
+    }
+
+    public List<Passenger> getPassengersByDirection(Direction direction) {
+        try {
+            return dbManager.getPassengersByDirection(direction);
+        } catch (SQLException e) {
+            System.out.println("Ошибка получения пассажиров по направлению: " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+}

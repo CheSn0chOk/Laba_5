@@ -1,0 +1,684 @@
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.io.File;
+import java.util.List;
+
+public class Main extends JFrame {
+    private TicketOffice ticketOffice;
+    private DefaultTableModel passengersTableModel;
+    private DefaultTableModel ticketsTableModel;
+    private JComboBox<String> passportCombo;
+
+    public Main() {
+        ticketOffice = TicketOffice.getInstance();
+        setTitle("Система управления кассой вокзала");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(1200, 800);
+        setLocationRelativeTo(null);
+
+        initializeComponents();
+    }
+
+    private void initializeComponents() {
+        createMenuBar();
+
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.addTab("Тарифы", createTariffsPanel());
+        tabbedPane.addTab("Пассажиры", createPassengersPanel());
+        tabbedPane.addTab("Продажа билетов", createSalesPanel());
+        tabbedPane.addTab("Отчеты", createReportsPanel());
+
+        add(tabbedPane);
+    }
+
+    private JPanel createReportsPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+
+        // Панель управления отчетами
+        JPanel controlPanel = new JPanel(new FlowLayout());
+
+        JComboBox<Direction> directionCombo = new JComboBox<>(Direction.values());
+        JButton showPassengersByDirectionBtn = new JButton("Пассажиры по направлению");
+        JButton showAllTicketsBtn = new JButton("Все проданные билеты");
+        JButton showTotalRevenueBtn = new JButton("Общая выручка");
+        JButton sortByNameBtn = new JButton("Сортировать по ФИО");
+        JButton sortByCostBtn = new JButton("Сортировать по стоимости");
+
+        controlPanel.add(new JLabel("Направление:"));
+        controlPanel.add(directionCombo);
+        controlPanel.add(showPassengersByDirectionBtn);
+        controlPanel.add(showAllTicketsBtn);
+        controlPanel.add(showTotalRevenueBtn);
+        controlPanel.add(sortByNameBtn);
+        controlPanel.add(sortByCostBtn);
+
+        // Таблица для отчетов
+        String[] reportColumns = {"Тип отчета", "Данные", "Значение"};
+        DefaultTableModel reportTableModel = new DefaultTableModel(reportColumns, 0);
+        JTable reportTable = new JTable(reportTableModel);
+        JScrollPane reportScrollPane = new JScrollPane(reportTable);
+
+        // Обработчики кнопок отчетов
+        showPassengersByDirectionBtn.addActionListener(e -> {
+            Direction direction = (Direction) directionCombo.getSelectedItem();
+            if (direction != null) {
+                showPassengersByDirection(reportTableModel, direction);
+            }
+        });
+
+        showAllTicketsBtn.addActionListener(e -> {
+            showAllTicketsReport(reportTableModel);
+        });
+
+        showTotalRevenueBtn.addActionListener(e -> {
+            showTotalRevenue(reportTableModel);
+        });
+
+        sortByNameBtn.addActionListener(e -> {
+            sortTicketsByPassengerName(reportTableModel);
+        });
+
+        sortByCostBtn.addActionListener(e -> {
+            sortTicketsByCost(reportTableModel);
+        });
+
+        panel.add(controlPanel, BorderLayout.NORTH);
+        panel.add(reportScrollPane, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private void showPassengersByDirection(DefaultTableModel model, Direction direction) {
+        model.setRowCount(0);
+
+        List<Ticket> tickets = ticketOffice.getAllTickets();
+        int count = 0;
+
+        for (Ticket ticket : tickets) {
+            if (ticket.getDirection() == direction) {
+                model.addRow(new Object[]{
+                        "Пассажир направления " + direction,
+                        ticket.getPassenger().getFullName(),
+                        "Билет: " + ticket.getPrice() + " руб."
+                });
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            model.addRow(new Object[]{
+                    "Пассажиры направления " + direction,
+                    "Нет данных",
+                    "Билеты не продавались"
+            });
+        }
+    }
+
+    private void showAllTicketsReport(DefaultTableModel model) {
+        model.setRowCount(0);
+
+        List<Ticket> tickets = ticketOffice.getAllTickets();
+
+        if (tickets.isEmpty()) {
+            model.addRow(new Object[]{"Все билеты", "Нет данных", "Билеты не продавались"});
+        } else {
+            for (Ticket ticket : tickets) {
+                model.addRow(new Object[]{
+                        "Проданный билет",
+                        ticket.getPassenger().getFullName() + " → " + ticket.getDirection(),
+                        ticket.getPrice() + " руб."
+                });
+            }
+        }
+    }
+
+    private void showTotalRevenue(DefaultTableModel model) {
+        model.setRowCount(0);
+
+        List<Ticket> tickets = ticketOffice.getAllTickets();
+        double totalRevenue = 0;
+
+        for (Ticket ticket : tickets) {
+            totalRevenue += ticket.getPrice();
+        }
+
+        model.addRow(new Object[]{
+                "Общая выручка",
+                "Продано билетов: " + tickets.size(),
+                totalRevenue + " руб."
+        });
+    }
+
+    private void sortTicketsByPassengerName(DefaultTableModel model) {
+        model.setRowCount(0);
+
+        List<Ticket> tickets = ticketOffice.getAllTickets();
+        tickets.sort((t1, t2) -> t1.getPassenger().getFullName()
+                .compareTo(t2.getPassenger().getFullName()));
+
+        for (Ticket ticket : tickets) {
+            model.addRow(new Object[]{
+                    "Билет (сортировка по ФИО)",
+                    ticket.getPassenger().getFullName(),
+                    ticket.getDirection() + " - " + ticket.getPrice() + " руб."
+            });
+        }
+    }
+
+    private void sortTicketsByCost(DefaultTableModel model) {
+        model.setRowCount(0);
+
+        List<Ticket> tickets = ticketOffice.getAllTickets();
+        tickets.sort((t1, t2) -> Double.compare(t2.getPrice(), t1.getPrice())); // По убыванию
+
+        for (Ticket ticket : tickets) {
+            model.addRow(new Object[]{
+                    "Билет (сортировка по стоимости)",
+                    ticket.getDirection() + " - " + ticket.getPassenger().getFullName(),
+                    ticket.getPrice() + " руб."
+            });
+        }
+    }
+
+    private JPanel createSalesPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+
+        // Панель ввода данных
+        JPanel inputPanel = new JPanel(new GridLayout(3, 2, 5, 5));
+
+        passportCombo = new JComboBox<>();
+        JComboBox<Direction> directionCombo = new JComboBox<>(Direction.values());
+        JLabel priceLabel = new JLabel("0.0 руб.");
+        JButton sellButton = new JButton("Продать билет");
+        JButton refreshPassengersButton = new JButton("Обновить список");
+
+        // Настройка выпадающего списка пассажиров
+        updatePassengersCombo();
+
+        inputPanel.add(new JLabel("Пассажир:"));
+        inputPanel.add(passportCombo);
+        inputPanel.add(new JLabel("Направление:"));
+        inputPanel.add(directionCombo);
+        inputPanel.add(new JLabel("Стоимость:"));
+        inputPanel.add(priceLabel);
+        inputPanel.add(sellButton);
+        inputPanel.add(refreshPassengersButton);
+
+        // Показываем стоимость при выборе направления
+        directionCombo.addActionListener(e -> {
+            Direction selectedDirection = (Direction) directionCombo.getSelectedItem();
+            if (selectedDirection != null) {
+                double price = ticketOffice.getTariff(selectedDirection);
+                priceLabel.setText(price + " руб.");
+            }
+        });
+
+        // Обработчик кнопки продажи
+        sellButton.addActionListener(e -> {
+            // ПРОВЕРКА: выбран ли пассажир
+            if (passportCombo.getSelectedItem() == null ||
+                    passportCombo.getSelectedItem().toString().isEmpty() ||
+                    passportCombo.getSelectedItem().toString().equals("Нет зарегистрированных пассажиров")) {
+                JOptionPane.showMessageDialog(this,
+                        "Выберите пассажира!", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            String selectedPassport = (String) passportCombo.getSelectedItem();
+            Direction selectedDirection = (Direction) directionCombo.getSelectedItem();
+
+            if (selectedDirection == null) {
+                JOptionPane.showMessageDialog(this,
+                        "Выберите направление!", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            double price = ticketOffice.getTariff(selectedDirection);
+            if (price <= 0) {
+                JOptionPane.showMessageDialog(this,
+                        "Тариф на направление " + selectedDirection + " не установлен!",
+                        "Ошибка", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            // Находим пассажира
+            Passenger passenger = ticketOffice.findPassengerByPassport(selectedPassport);
+            if (passenger == null) {
+                JOptionPane.showMessageDialog(this,
+                        "Пассажир не найден!", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            // Продаем билет
+            boolean success = ticketOffice.sellTicket(passenger, selectedDirection);
+            if (success) {
+                JOptionPane.showMessageDialog(this,
+                        "Билет успешно продан!\n" +
+                                "Пассажир: " + passenger.getFullName() + "\n" +
+                                "Направление: " + selectedDirection + "\n" +
+                                "Стоимость: " + price + " руб.");
+
+                // Обновляем таблицу билетов
+                updateTicketsTable();
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "Ошибка при продаже билета!", "Ошибка", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        // Обновление списка пассажиров
+        refreshPassengersButton.addActionListener(e -> {
+            updatePassengersCombo();
+            updateTicketsTable();
+        });
+
+        // Таблица проданных билетов
+        String[] ticketsColumns = {"Пассажир", "Паспорт", "Направление", "Стоимость"};
+        ticketsTableModel = new DefaultTableModel(ticketsColumns, 0);
+        JTable ticketsTable = new JTable(ticketsTableModel);
+        JScrollPane ticketsScrollPane = new JScrollPane(ticketsTable);
+
+        // Заголовок для таблицы
+        JLabel ticketsLabel = new JLabel("Проданные билеты:", SwingConstants.CENTER);
+        ticketsLabel.setFont(new Font("Arial", Font.BOLD, 14));
+
+        panel.add(inputPanel, BorderLayout.NORTH);
+        panel.add(ticketsLabel, BorderLayout.CENTER);
+        panel.add(ticketsScrollPane, BorderLayout.SOUTH);
+
+        // Инициализируем таблицу билетов
+        updateTicketsTable();
+
+        return panel;
+    }
+
+    private void updatePassengersCombo() {
+        if (passportCombo == null) return;
+
+        passportCombo.removeAllItems();
+
+        // Получаем реальных пассажиров из TicketOffice
+        List<Passenger> passengers = ticketOffice.getAllPassengers();
+
+        if (passengers.isEmpty()) {
+            passportCombo.addItem("Нет зарегистрированных пассажиров");
+        } else {
+            passportCombo.addItem(""); // Пустой элемент
+            for (Passenger passenger : passengers) {
+                passportCombo.addItem(passenger.getPassportNumber());
+            }
+        }
+    }
+
+    private void updateTicketsTable() {
+        if (ticketsTableModel == null) return;
+
+        ticketsTableModel.setRowCount(0);
+
+        // Получаем реальные билеты из TicketOffice
+        List<Ticket> tickets = ticketOffice.getAllTickets();
+
+        if (tickets.isEmpty()) {
+            ticketsTableModel.addRow(new Object[]{"Билетов нет", "", "", ""});
+        } else {
+            for (Ticket ticket : tickets) {
+                ticketsTableModel.addRow(new Object[]{
+                        ticket.getPassenger().getFullName(),
+                        ticket.getPassenger().getPassportNumber(),
+                        ticket.getDirection().getDisplayName(),
+                        ticket.getPrice() + " руб."
+                });
+            }
+        }
+    }
+
+    private JPanel createPassengersPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+
+        JPanel inputPanel = new JPanel(new GridLayout(5, 2, 5, 5));
+
+        JTextField seriesField = new JTextField();
+        JTextField numberField = new JTextField();
+        JTextField nameField = new JTextField();
+        JButton registerButton = new JButton("Зарегистрировать пассажира");
+        JButton deleteButton = new JButton("Удалить выбранного");
+        JButton refreshButton = new JButton("Обновить список"); // ★ НОВАЯ КНОПКА
+
+        inputPanel.add(new JLabel("Серия паспорта (4 цифры):"));
+        inputPanel.add(seriesField);
+        inputPanel.add(new JLabel("Номер паспорта (6 цифр):"));
+        inputPanel.add(numberField);
+        inputPanel.add(new JLabel("ФИО пассажира:"));
+        inputPanel.add(nameField);
+        inputPanel.add(registerButton);
+        inputPanel.add(deleteButton);
+        inputPanel.add(refreshButton); // ★ ДОБАВЛЯЕМ КНОПКУ
+        inputPanel.add(new JLabel()); // Пустая ячейка для выравнивания
+
+        String[] columnNames = {"Паспорт", "ФИО"};
+        passengersTableModel = new DefaultTableModel(columnNames, 0);
+        JTable passengersTable = new JTable(passengersTableModel);
+        JScrollPane scrollPane = new JScrollPane(passengersTable);
+
+        // ★ МЕТОД ДЛЯ ОБНОВЛЕНИЯ ТАБЛИЦЫ ПАССАЖИРОВ
+        Runnable updatePassengersTable = () -> {
+            passengersTableModel.setRowCount(0);
+            List<Passenger> passengers = ticketOffice.getAllPassengers();
+            for (Passenger passenger : passengers) {
+                passengersTableModel.addRow(new Object[]{
+                        passenger.getPassportNumber(),
+                        passenger.getFullName()
+                });
+            }
+        };
+
+        // ★ ЗАГРУЖАЕМ ДАННЫЕ ПРИ СОЗДАНИИ ПАНЕЛИ
+        updatePassengersTable.run();
+
+        registerButton.addActionListener(e -> {
+            String series = seriesField.getText().trim();
+            String number = numberField.getText().trim();
+            String fullName = nameField.getText().trim();
+
+            if (validatePassengerInput(series, number, fullName)) {
+                String passport = series + " " + number;
+
+                if (ticketOffice.findPassengerByPassport(passport) != null) {
+                    JOptionPane.showMessageDialog(this,
+                            "Пассажир с паспортом " + passport + " уже зарегистрирован!",
+                            "Ошибка", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+
+                Passenger passenger = new Passenger(passport, fullName);
+                ticketOffice.addPassenger(passenger);
+
+                // ★ ОБНОВЛЯЕМ ТАБЛИЦУ ПОСЛЕ ДОБАВЛЕНИЯ
+                updatePassengersTable.run();
+
+                seriesField.setText("");
+                numberField.setText("");
+                nameField.setText("");
+
+                // ОБНОВЛЯЕМ КОМБОБОКС ВО ВКЛАДКЕ ПРОДАЖИ
+                updatePassengersCombo();
+
+                JOptionPane.showMessageDialog(this,
+                        "Пассажир успешно зарегистрирован: " + fullName);
+            }
+        });
+
+        deleteButton.addActionListener(e -> {
+            int selectedRow = passengersTable.getSelectedRow();
+            if (selectedRow >= 0) {
+                String passport = (String) passengersTableModel.getValueAt(selectedRow, 0);
+                String name = (String) passengersTableModel.getValueAt(selectedRow, 1);
+
+                int confirm = JOptionPane.showConfirmDialog(this,
+                        "Удалить пассажира: " + name + "?\nПаспорт: " + passport +
+                                "\nВНИМАНИЕ: Все билеты этого пассажира также будут удалены!",
+                        "Подтверждение удаления", JOptionPane.YES_NO_OPTION);
+
+                if (confirm == JOptionPane.YES_OPTION) {
+                    // УДАЛЯЕМ ИЗ СИСТЕМЫ
+                    boolean success = ticketOffice.removePassenger(passport);
+                    if (success) {
+                        // ★ ОБНОВЛЯЕМ ТАБЛИЦУ ПОСЛЕ УДАЛЕНИЯ
+                        updatePassengersTable.run();
+                        // Обновляем комбобокс и таблицу билетов
+                        updatePassengersCombo();
+                        updateTicketsTable();
+
+                        JOptionPane.showMessageDialog(this,
+                                "Пассажир и все его билеты успешно удалены");
+                    } else {
+                        JOptionPane.showMessageDialog(this,
+                                "Ошибка при удалении пассажира", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "Выберите пассажира для удаления", "Ошибка", JOptionPane.WARNING_MESSAGE);
+            }
+        });
+
+        // ★ ОБРАБОТЧИК ДЛЯ КНОПКИ ОБНОВЛЕНИЯ
+        refreshButton.addActionListener(e -> {
+            updatePassengersTable.run();
+            JOptionPane.showMessageDialog(this, "Список пассажиров обновлен");
+        });
+
+        panel.add(inputPanel, BorderLayout.NORTH);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private boolean validatePassengerInput(String series, String number, String fullName) {
+        if (!series.matches("\\d{4}")) {
+            JOptionPane.showMessageDialog(this,
+                    "Серия паспорта должна содержать ровно 4 цифры!",
+                    "Ошибка", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        if (!number.matches("\\d{6}")) {
+            JOptionPane.showMessageDialog(this,
+                    "Номер паспорта должен содержать ровно 6 цифр!",
+                    "Ошибка", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        if (!fullName.matches("[а-яА-ЯёЁa-zA-Z\\s-'']{2,50}")) {
+            JOptionPane.showMessageDialog(this,
+                    "ФИО должно содержать только буквы и быть от 2 до 50 символов!",
+                    "Ошибка", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        String[] nameParts = fullName.split("\\s+");
+        if (nameParts.length < 2) {
+            JOptionPane.showMessageDialog(this,
+                    "Введите Фамилию и Имя (минимум 2 слова)!",
+                    "Ошибка", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        for (String part : nameParts) {
+            if (part.length() < 2) {
+                JOptionPane.showMessageDialog(this,
+                        "Каждая часть ФИО должна быть не короче 2 букв. '" + part + "' слишком короткое.",
+                        "Ошибка", JOptionPane.ERROR_MESSAGE);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private JPanel createTariffsPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+
+        JPanel inputPanel = new JPanel(new FlowLayout());
+
+        JComboBox<Direction> directionCombo = new JComboBox<>(Direction.values());
+        JTextField priceField = new JTextField(10);
+        JButton setTariffButton = new JButton("Установить тариф");
+        JButton refreshButton = new JButton("Обновить");
+
+        inputPanel.add(new JLabel("Направление:"));
+        inputPanel.add(directionCombo);
+        inputPanel.add(new JLabel("Стоимость:"));
+        inputPanel.add(priceField);
+        inputPanel.add(setTariffButton);
+        inputPanel.add(refreshButton);
+
+        String[] columnNames = {"Направление", "Стоимость (руб.)"};
+        DefaultTableModel tableModel = new DefaultTableModel(columnNames, 0);
+        JTable tariffsTable = new JTable(tableModel);
+        JScrollPane scrollPane = new JScrollPane(tariffsTable);
+
+        Runnable updateTable = () -> {
+            tableModel.setRowCount(0);
+            for (Direction direction : Direction.values()) {
+                double price = ticketOffice.getTariff(direction);
+                tableModel.addRow(new Object[]{direction.getDisplayName(), price});
+            }
+        };
+
+        setTariffButton.addActionListener(e -> {
+            Direction selectedDirection = (Direction) directionCombo.getSelectedItem();
+            String priceText = priceField.getText();
+
+            // ПРОВЕРКА: выбрано ли направление
+            if (selectedDirection == null) {
+                JOptionPane.showMessageDialog(this,
+                        "Выберите направление!", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            // ПРОВЕРКА: введена ли цена
+            if (priceText.trim().isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                        "Введите стоимость тарифа!", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            try {
+                double price = Double.parseDouble(priceText);
+                if (price > 0 && price <= 100000) {
+                    ticketOffice.setTariff(selectedDirection, price);
+                    JOptionPane.showMessageDialog(this,
+                            "Тариф на " + selectedDirection + " установлен: " + price + " руб.");
+                    priceField.setText("");
+                    updateTable.run();
+                } else {
+                    JOptionPane.showMessageDialog(this,
+                            "Стоимость должна быть от 0.01 до 100000 руб.", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "Введите корректное число!\nПример: 1500.50", "Ошибка", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        refreshButton.addActionListener(e -> updateTable.run());
+
+        panel.add(inputPanel, BorderLayout.NORTH);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        updateTable.run();
+
+        return panel;
+    }
+
+    private void createMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+
+        // Меню Файл
+        JMenu fileMenu = new JMenu("Файл");
+        JMenuItem saveItem = new JMenuItem("Сохранить данные");
+        JMenuItem loadItem = new JMenuItem("Загрузить данные");
+        JMenuItem exitItem = new JMenuItem("Выход");
+
+        // Меню Данные
+        JMenu dataMenu = new JMenu("Данные");
+        JMenuItem cleanupItem = new JMenuItem("Очистить систему");
+        JMenuItem refreshItem = new JMenuItem("Обновить все данные");
+
+        // Обработчики для меню Файл
+        saveItem.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Сохранить данные");
+            fileChooser.setCurrentDirectory(new File("data"));
+            fileChooser.setSelectedFile(new File("tickets.dat"));
+
+            if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File file = fileChooser.getSelectedFile();
+                ticketOffice.saveToFile(file.getAbsolutePath());
+                JOptionPane.showMessageDialog(this,
+                        "Данные успешно сохранены в файл: " + file.getName());
+            }
+        });
+
+        loadItem.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Загрузить данные");
+            fileChooser.setCurrentDirectory(new File("data"));
+
+            if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File file = fileChooser.getSelectedFile();
+                ticketOffice.loadFromFile(file.getAbsolutePath());
+                updateAllTables();
+                JOptionPane.showMessageDialog(this,
+                        "Данные успешно загружены из файла: " + file.getName());
+            }
+        });
+
+        exitItem.addActionListener(e -> System.exit(0));
+
+        // Обработчики для меню Данные
+        cleanupItem.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "ВНИМАНИЕ: Это действие удалит ВСЕ данные системы!\n" +
+                            "Пассажиры, билеты, тарифы - всё будет очищено.\n\n" +
+                            "Вы уверены что хотите продолжить?",
+                    "Очистка системы", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+            if (confirm == JOptionPane.YES_OPTION) {
+                ticketOffice.cleanup();
+                updateAllTables();
+                JOptionPane.showMessageDialog(this,
+                        "Система успешно очищена. Все данные удалены.");
+            }
+        });
+
+        refreshItem.addActionListener(e -> {
+            updateAllTables();
+            JOptionPane.showMessageDialog(this, "Все данные обновлены");
+        });
+
+        // Собираем меню Файл
+        fileMenu.add(saveItem);
+        fileMenu.add(loadItem);
+        fileMenu.addSeparator();
+        fileMenu.add(exitItem);
+
+        // Собираем меню Данные
+        dataMenu.add(cleanupItem);
+        dataMenu.add(refreshItem);
+
+        // Добавляем меню в строку
+        menuBar.add(fileMenu);
+        menuBar.add(dataMenu);
+
+        setJMenuBar(menuBar);
+    }
+
+    private void updateAllTables() {
+        // Обновляем таблицу пассажиров
+        if (passengersTableModel != null) {
+            passengersTableModel.setRowCount(0);
+            List<Passenger> passengers = ticketOffice.getAllPassengers();
+            for (Passenger passenger : passengers) {
+                passengersTableModel.addRow(new Object[]{
+                        passenger.getPassportNumber(),
+                        passenger.getFullName()
+                });
+            }
+        }
+
+        // Обновляем таблицу билетов
+        updateTicketsTable();
+
+        // Обновляем комбобокс пассажиров
+        updatePassengersCombo();
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            new Main().setVisible(true);
+        });
+    }
+}

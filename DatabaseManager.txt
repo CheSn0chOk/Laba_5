@@ -1,0 +1,258 @@
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class DatabaseManager {
+    private static final String URL = "jdbc:sqlite:station.db";
+    private static DatabaseManager instance;
+    private Connection connection;
+
+    private DatabaseManager() {
+        initializeDatabase();
+    }
+
+    public static DatabaseManager getInstance() {
+        if (instance == null) {
+            instance = new DatabaseManager();
+        }
+        return instance;
+    }
+
+    private void initializeDatabase() {
+        try {
+            connection = DriverManager.getConnection(URL);
+            createTables();
+            System.out.println("✅ База данных подключена успешно");
+        } catch (SQLException e) {
+            System.out.println("❌ Ошибка подключения к БД: " + e.getMessage());
+        }
+    }
+
+    private void createTables() throws SQLException {
+        String createPassengersTable = """
+            CREATE TABLE IF NOT EXISTS passengers (
+                passport_number TEXT PRIMARY KEY,
+                full_name TEXT NOT NULL
+            )
+        """;
+
+        String createTariffsTable = """
+            CREATE TABLE IF NOT EXISTS tariffs (
+                direction TEXT PRIMARY KEY,
+                price REAL NOT NULL
+            )
+        """;
+
+        String createTicketsTable = """
+            CREATE TABLE IF NOT EXISTS tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                passenger_passport TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                price REAL NOT NULL,
+                sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (passenger_passport) REFERENCES passengers(passport_number)
+            )
+        """;
+
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute(createPassengersTable);
+            stmt.execute(createTariffsTable);
+            stmt.execute(createTicketsTable);
+        }
+
+        // Заполняем начальные тарифы
+        initializeDefaultTariffs();
+    }
+
+    private void initializeDefaultTariffs() {
+        String checkSql = "SELECT COUNT(*) FROM tariffs";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(checkSql)) {
+
+            if (rs.getInt(1) == 0) {
+                // Тарифы пустые, заполняем стандартными значениями
+                String[] directions = {"MOSCOW", "SAINT_PETERSBURG", "SOCHI", "KAZAN",
+                        "EKATERINBURG", "NOVOSIBIRSK", "KRASNODAR", "ROSTOV"};
+                double[] prices = {1500.0, 1200.0, 3500.0, 1800.0, 2500.0, 4500.0, 2800.0, 2200.0};
+
+                String insertSql = "INSERT INTO tariffs (direction, price) VALUES (?, ?)";
+                try (PreparedStatement pstmt = connection.prepareStatement(insertSql)) {
+                    for (int i = 0; i < directions.length; i++) {
+                        pstmt.setString(1, directions[i]);
+                        pstmt.setDouble(2, prices[i]);
+                        pstmt.executeUpdate();
+                    }
+                }
+                System.out.println("✅ Стандартные тарифы загружены");
+            }
+        } catch (SQLException e) {
+            System.out.println("❌ Ошибка инициализации тарифов: " + e.getMessage());
+        }
+    }
+
+    // === МЕТОДЫ ДЛЯ ПАССАЖИРОВ ===
+    public void addPassenger(Passenger passenger) throws SQLException {
+        String sql = "INSERT OR REPLACE INTO passengers (passport_number, full_name) VALUES (?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, passenger.getPassportNumber());
+            pstmt.setString(2, passenger.getFullName());
+            pstmt.executeUpdate();
+        }
+    }
+
+    public List<Passenger> getAllPassengers() throws SQLException {
+        List<Passenger> passengers = new ArrayList<>();
+        String sql = "SELECT * FROM passengers";
+
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                passengers.add(new Passenger(
+                        rs.getString("passport_number"),
+                        rs.getString("full_name")
+                ));
+            }
+        }
+        return passengers;
+    }
+
+    public boolean removePassenger(String passportNumber) throws SQLException {
+        // Сначала удаляем билеты пассажира
+        String deleteTicketsSql = "DELETE FROM tickets WHERE passenger_passport = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(deleteTicketsSql)) {
+            pstmt.setString(1, passportNumber);
+            pstmt.executeUpdate();
+        }
+
+        // Затем удаляем самого пассажира
+        String deletePassengerSql = "DELETE FROM passengers WHERE passport_number = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(deletePassengerSql)) {
+            pstmt.setString(1, passportNumber);
+            return pstmt.executeUpdate() > 0;
+        }
+    }
+
+    public Passenger findPassengerByPassport(String passportNumber) throws SQLException {
+        String sql = "SELECT * FROM passengers WHERE passport_number = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, passportNumber);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                return new Passenger(
+                        rs.getString("passport_number"),
+                        rs.getString("full_name")
+                );
+            }
+        }
+        return null;
+    }
+
+    // === МЕТОДЫ ДЛЯ ТАРИФОВ ===
+    public void setTariff(String direction, double price) throws SQLException {
+        String sql = "INSERT OR REPLACE INTO tariffs (direction, price) VALUES (?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, direction);
+            pstmt.setDouble(2, price);
+            pstmt.executeUpdate();
+        }
+    }
+
+    public double getTariff(String direction) throws SQLException {
+        String sql = "SELECT price FROM tariffs WHERE direction = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, direction);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                return rs.getDouble("price");
+            }
+        }
+        return 0.0;
+    }
+
+    // === МЕТОДЫ ДЛЯ БИЛЕТОВ ===
+    public void addTicket(Ticket ticket) throws SQLException {
+        String sql = "INSERT INTO tickets (passenger_passport, direction, price) VALUES (?, ?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, ticket.getPassenger().getPassportNumber());
+            pstmt.setString(2, ticket.getDirection().name());
+            pstmt.setDouble(3, ticket.getPrice());
+            pstmt.executeUpdate();
+        }
+    }
+
+    public List<Ticket> getAllTickets() throws SQLException {
+        List<Ticket> tickets = new ArrayList<>();
+        String sql = """
+            SELECT t.*, p.passport_number, p.full_name 
+            FROM tickets t 
+            JOIN passengers p ON t.passenger_passport = p.passport_number
+            """;
+
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                Passenger passenger = new Passenger(
+                        rs.getString("passport_number"),
+                        rs.getString("full_name")
+                );
+
+                Ticket ticket = new Ticket(
+                        passenger,
+                        Direction.valueOf(rs.getString("direction")),
+                        rs.getDouble("price")
+                );
+                tickets.add(ticket);
+            }
+        }
+        return tickets;
+    }
+
+    // === ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ===
+    public double getTotalRevenue() throws SQLException {
+        String sql = "SELECT SUM(price) as total FROM tickets";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            return rs.next() ? rs.getDouble("total") : 0.0;
+        }
+    }
+
+    public List<Passenger> getPassengersByDirection(Direction direction) throws SQLException {
+        List<Passenger> passengers = new ArrayList<>();
+        String sql = """
+            SELECT DISTINCT p.* 
+            FROM passengers p 
+            JOIN tickets t ON p.passport_number = t.passenger_passport 
+            WHERE t.direction = ?
+            """;
+
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, direction.name());
+            ResultSet rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                passengers.add(new Passenger(
+                        rs.getString("passport_number"),
+                        rs.getString("full_name")
+                ));
+            }
+        }
+        return passengers;
+    }
+
+    public void cleanup() throws SQLException {
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("DELETE FROM tickets");
+            stmt.execute("DELETE FROM passengers");
+            // Тарифы не удаляем, они должны остаться
+        }
+    }
+
+    public Connection getConnection() {
+        return connection;
+    }
+}
